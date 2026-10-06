@@ -1,0 +1,15 @@
+services:
+  api:
+    build:
+      target: dev
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./app/src
+          target: /app/src
+        - action: rebuild
+          path: ./app/package.json
+
+  db:
+    ports:
+      - "${DB_HOST_PORT:-5432}:5432"
