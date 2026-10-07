@@ -1,0 +1,56 @@
+name: td4
+
+on:
+  push:
+    paths: ["td4/**", ".github/workflows/td4.yml"]
+  pull_request:
+    paths: ["td4/**", ".github/workflows/td4.yml"]
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: build
+        run: |
+          docker build --target prod \
+            --label org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }} \
+            --label org.opencontainers.image.revision=${{ github.sha }} \
+            -t visites-api:ci td4/app
+
+      - name: scan
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.74.0 image --severity CRITICAL --exit-code 1 visites-api:ci
+
+      - name: test
+        run: |
+          docker network create ci
+          docker run -d --name db --network ci \
+            -e POSTGRES_DB=visites -e POSTGRES_USER=visites -e POSTGRES_PASSWORD=ci-pwd \
+            --health-cmd "pg_isready -U visites -d visites" --health-interval 2s \
+            postgres:18-alpine
+          docker run -d --name cache --network ci redis:8-alpine
+          until [ "$(docker inspect -f '{{.State.Health.Status}}' db)" = healthy ]; do sleep 2; done
+          docker run -d --name api --network ci -p 3000:3000 \
+            -e DB_HOST=db -e DB_NAME=visites -e DB_USER=visites -e DB_PASSWORD=ci-pwd \
+            -e REDIS_URL=redis://cache:6379 visites-api:ci
+          for i in $(seq 1 30); do
+            if curl -sf localhost:3000/ | grep -q visitsInPostgres; then curl -s localhost:3000/; exit 0; fi
+            sleep 2
+          done
+          docker logs api
+          exit 1
+
+      - name: publish
+        if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        run: |
+          IMAGE=ghcr.io/$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')/visites-api:${GITHUB_SHA::7}
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker tag visites-api:ci "$IMAGE"
+          docker push "$IMAGE"
+          echo "### Image publiée : \`$IMAGE\`" >> "$GITHUB_STEP_SUMMARY"

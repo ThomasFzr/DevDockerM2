@@ -1,0 +1,16 @@
+{
+  "name": "td3-visites",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "lodash": "^4.17.4",
+    "pg": "^8.23.0",
+    "redis": "^6.2.1"
+  }
+}
