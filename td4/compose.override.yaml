@@ -1,0 +1,21 @@
+services:
+  api:
+    build:
+      target: dev
+    ports:
+      - "${API_DEV_PORT:-3000}:3000"
+    environment:
+      DB_PASSWORD: ${DB_PASSWORD}
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./app/src
+          target: /app/src
+        - action: rebuild
+          path: ./app/package.json
+
+  db:
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "${DB_HOST_PORT:-5432}:5432"
